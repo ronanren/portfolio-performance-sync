@@ -2,20 +2,51 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from decimal import Decimal, getcontext
 import yfinance as yf
-
-getcontext().prec = 10
-
-# Get EUR/USD exchange rate
-eur_usd = yf.Ticker("EURUSD=X")
-eur_usd_rate = Decimal(str(eur_usd.history(period="1d")["Close"].iloc[-1]))
+from datetime import datetime
+import pandas as pd
 
 
-def convert_to_usd(amount, currency):
+def get_historical_eur_usd_rate(date_str):
+    """Get EUR/USD exchange rate for a specific date"""
+    if not date_str:
+        eur_usd = yf.Ticker("EURUSD=X")
+        return Decimal(str(eur_usd.history(period="1d")["Close"].iloc[-1]))
+
+    date = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d")
+    eur_usd = yf.Ticker("EURUSD=X")
+
+    try:
+        historical_data = eur_usd.history(start=date, end=date + pd.Timedelta(days=1))
+        if not historical_data.empty:
+            return Decimal(str(historical_data["Close"].iloc[0]))
+    except:
+        pass
+
+    for days_back in range(1, 6):
+        try:
+            lookback_date = date - pd.Timedelta(days=days_back)
+            historical_data = eur_usd.history(
+                start=lookback_date, end=lookback_date + pd.Timedelta(days=1)
+            )
+            if not historical_data.empty:
+                return Decimal(str(historical_data["Close"].iloc[0]))
+        except:
+            continue
+    try:
+        historical_data = eur_usd.history(period="1d")
+        if not historical_data.empty:
+            return Decimal(str(historical_data["Close"].iloc[-1]))
+    except:
+        return Decimal("1.0")
+
+
+def convert_to_usd(amount, currency, date_str):
     if amount is None:
         return None
     amount = Decimal(str(amount))
     if currency == "EUR":
-        return amount * eur_usd_rate
+        rate = get_historical_eur_usd_rate(date_str)
+        return amount * rate
     elif currency == "USD":
         return amount
     else:
@@ -62,6 +93,7 @@ for acct in root.find("accounts").findall("account"):
         for txn in portfolio.findall(".//portfolio-transaction"):
             type_ = txn.findtext("type")
             currency = txn.findtext("currencyCode")
+            date = txn.findtext("date")
             security_ref = txn.find("security")
             security_ref_text = security_ref.attrib.get("reference", "")
 
@@ -79,14 +111,14 @@ for acct in root.find("accounts").findall("account"):
 
             shares = Decimal(txn.findtext("shares", default="0")) / Decimal("1e8")
             amount = Decimal(txn.findtext("amount", default="0")) / Decimal("1e2")
-            amount_usd = convert_to_usd(amount, currency)
+            amount_usd = convert_to_usd(amount, currency, date)
 
             fees = Decimal("0")
             for unit in txn.findall(".//unit[@type='FEE']"):
                 fee_amount = Decimal(unit.find("amount").attrib["amount"]) / Decimal(
                     "1e8"
                 )
-                fees += convert_to_usd(fee_amount, currency)
+                fees += convert_to_usd(fee_amount, currency, date)
 
             h = holdings[uuid]
             h["name"] = security["name"]
@@ -116,7 +148,7 @@ sorted_holdings = sorted(
         x[1]["account"],
         -x[1]["total_shares"]
         * convert_to_usd(
-            security_map[x[0]]["latest_price"], security_map[x[0]]["currency"]
+            security_map[x[0]]["latest_price"], security_map[x[0]]["currency"], ""
         ),
     ),
 )
@@ -126,7 +158,7 @@ for uuid, h in sorted_holdings:
         continue
     avg_price = h["total_cost"] / h["total_shares"]
     latest_price_usd = convert_to_usd(
-        security_map[uuid]["latest_price"], security_map[uuid]["currency"]
+        security_map[uuid]["latest_price"], security_map[uuid]["currency"], ""
     )
     value = h["total_shares"] * latest_price_usd
     profit_loss = value - h["total_cost"]
@@ -144,7 +176,7 @@ for uuid, h in holdings.items():
     if h["total_shares"] <= 0:
         continue
     latest_price_usd = convert_to_usd(
-        security_map[uuid]["latest_price"], security_map[uuid]["currency"]
+        security_map[uuid]["latest_price"], security_map[uuid]["currency"], ""
     )
     total_value += h["total_shares"] * latest_price_usd
     total_cost += h["total_cost"]
