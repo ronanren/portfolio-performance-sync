@@ -77,7 +77,6 @@ def main(base_currency="USD"):
         ticker = sec.findtext("tickerSymbol")
         name = sec.findtext("name")
         currency = sec.findtext("currencyCode")
-        latest = sec.find("latest")
         price = Decimal(str(yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]))
         security_map[uuid] = {
             "name": name,
@@ -97,7 +96,6 @@ def main(base_currency="USD"):
             "fees": Decimal("0"),
         }
     )
-    number_of_transactions = 0
 
     # Find all portfolio transactions
     for acct in root.find("accounts").findall("account"):
@@ -151,7 +149,6 @@ def main(base_currency="USD"):
                     h["total_shares"] -= shares
                     h["total_cost"] -= amount_base
                 h["fees"] += fees
-                number_of_transactions += 1
 
     # === Compute Summary ===
     print(
@@ -159,11 +156,10 @@ def main(base_currency="USD"):
     )
     print("-" * 120)
 
-    # Sort holdings by account first, then by value in descending order
+    # Sort by value in descending order
     sorted_holdings = sorted(
         holdings.items(),
         key=lambda x: (
-            x[1]["account"],
             -x[1]["total_shares"]
             * convert_to_base_currency(
                 security_map[x[0]]["latest_price"],
