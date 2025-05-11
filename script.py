@@ -94,6 +94,7 @@ def main(base_currency="USD"):
             "total_shares": Decimal("0"),
             "total_cost": Decimal("0"),
             "fees": Decimal("0"),
+            "is_account": False,  # Flag to identify account transactions
         }
     )
 
@@ -141,6 +142,7 @@ def main(base_currency="USD"):
                 h["ticker"] = security["ticker"]
                 h["currency"] = base_currency
                 h["account"] = account_name
+                h["is_account"] = False
 
                 if type_ == "BUY":
                     h["total_shares"] += shares
@@ -149,6 +151,51 @@ def main(base_currency="USD"):
                     h["total_shares"] -= shares
                     h["total_cost"] -= amount_base
                 h["fees"] += fees
+
+    # Find all account transactions
+    for acct in root.find("accounts").findall("account"):
+        name = acct.findtext("name")
+        currency = acct.findtext("currencyCode")
+        if currency is None:
+            continue
+
+        # Skip USD and EUR accounts
+        if name in ["USD", "EUR"]:
+            continue
+
+        h = holdings[name]
+        h["name"] = name
+        h["ticker"] = "CASH"
+        h["currency"] = base_currency
+        h["is_account"] = True
+
+        for txn in acct.findall(".//account-transaction"):
+            type_ = txn.findtext("type")
+            txn_currency = txn.findtext("currencyCode")
+            if txn_currency is None:
+                continue
+            date = txn.findtext("date")
+
+            amount = Decimal(txn.findtext("amount", default="0")) / Decimal("1e2")
+            amount_base = convert_to_base_currency(
+                amount, txn_currency, date, base_currency
+            )
+
+            if type_ == "DEPOSIT":
+                h["total_cost"] += amount_base
+                h["total_shares"] += amount_base
+            elif type_ == "REMOVAL":
+                h["total_cost"] -= amount_base
+                h["total_shares"] -= amount_base
+            elif type_ == "DIVIDEND":
+                h["total_cost"] += amount_base
+                h["total_shares"] += amount_base
+            elif type_ == "INTEREST":
+                h["total_cost"] += amount_base
+                h["total_shares"] += amount_base
+            elif type_ == "FEE":
+                h["total_cost"] -= amount_base
+                h["total_shares"] -= amount_base
 
     # === Compute Summary ===
     print(
@@ -161,11 +208,15 @@ def main(base_currency="USD"):
         holdings.items(),
         key=lambda x: (
             -x[1]["total_shares"]
-            * convert_to_base_currency(
-                security_map[x[0]]["latest_price"],
-                security_map[x[0]]["currency"],
-                "",
-                base_currency,
+            * (
+                Decimal("1.0")
+                if x[1]["is_account"]
+                else convert_to_base_currency(
+                    security_map[x[0]]["latest_price"],
+                    security_map[x[0]]["currency"],
+                    "",
+                    base_currency,
+                )
             ),
         ),
     )
@@ -174,11 +225,15 @@ def main(base_currency="USD"):
         if h["total_shares"] <= 0:
             continue
         avg_price = h["total_cost"] / h["total_shares"]
-        latest_price_base = convert_to_base_currency(
-            security_map[uuid]["latest_price"],
-            security_map[uuid]["currency"],
-            "",
-            base_currency,
+        latest_price_base = (
+            Decimal("1.0")
+            if h["is_account"]
+            else convert_to_base_currency(
+                security_map[uuid]["latest_price"],
+                security_map[uuid]["currency"],
+                "",
+                base_currency,
+            )
         )
         value = h["total_shares"] * latest_price_base
         profit_loss = value - h["total_cost"]
@@ -188,7 +243,7 @@ def main(base_currency="USD"):
             else Decimal("0")
         )
         print(
-            f"{h['account']:<20} {h['ticker']:<12} {h['total_shares']:>12.4f} {avg_price:>12.2f} {latest_price_base:>12.2f} {value:>14.2f} {profit_loss:>12.2f} {profit_loss_pct:>8.2f}%"
+            f"{h['name']:<20} {h['ticker']:<12} {h['total_shares']:>12.4f} {avg_price:>12.2f} {latest_price_base:>12.2f} {value:>14.2f} {profit_loss:>12.2f} {profit_loss_pct:>8.2f}%"
         )
 
     # Calculate total portfolio value and profit/loss
@@ -197,11 +252,15 @@ def main(base_currency="USD"):
     for uuid, h in holdings.items():
         if h["total_shares"] <= 0:
             continue
-        latest_price_base = convert_to_base_currency(
-            security_map[uuid]["latest_price"],
-            security_map[uuid]["currency"],
-            "",
-            base_currency,
+        latest_price_base = (
+            Decimal("1.0")
+            if h["is_account"]
+            else convert_to_base_currency(
+                security_map[uuid]["latest_price"],
+                security_map[uuid]["currency"],
+                "",
+                base_currency,
+            )
         )
         total_value += h["total_shares"] * latest_price_base
         total_cost += h["total_cost"]
