@@ -4,7 +4,6 @@ from typing import Dict, Any, List
 import sys
 import os
 
-# Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from script import calculate_portfolio
@@ -16,10 +15,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,15 +25,15 @@ app.add_middleware(
 
 
 @app.get("/api/portfolio", dependencies=[Depends(get_api_key)])
-async def get_portfolio_value(base_currency: str = "USD") -> Dict[str, Any]:
+async def get_portfolio_value(base_currency: str = "USD") -> Dict[str, Dict[str, Any]]:
     """
-    Get the total portfolio value.
+    Get the total portfolio value and details.
 
     Args:
         base_currency (str): The base currency for calculations (USD or EUR)
 
     Returns:
-        Dict containing portfolio information including summary
+        Dict containing portfolio information including summary and holdings
     """
     if base_currency not in ["USD", "EUR"]:
         raise HTTPException(
@@ -43,7 +41,7 @@ async def get_portfolio_value(base_currency: str = "USD") -> Dict[str, Any]:
         )
 
     try:
-        summary = calculate_portfolio(base_currency)
+        summary = await calculate_portfolio(base_currency)
         return {"summary": summary}
     except Exception as e:
         raise HTTPException(

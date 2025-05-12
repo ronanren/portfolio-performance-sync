@@ -5,6 +5,8 @@ import yfinance as yf
 from datetime import datetime
 import pandas as pd
 from typing import Dict, List, Any, Tuple
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 
 def get_historical_eur_usd_rate(date_str):
@@ -41,6 +43,38 @@ def get_historical_eur_usd_rate(date_str):
         return Decimal("1.0")
 
 
+def get_latest_price(ticker: str) -> Decimal:
+    """Get the latest price for a ticker with error handling"""
+    try:
+        ticker_data = yf.Ticker(ticker)
+        history = ticker_data.history(period="1d")
+        if not history.empty:
+            return Decimal(str(history["Close"].iloc[-1]))
+        else:
+            print(f"Warning: No price data found for {ticker}")
+            return Decimal("0")
+    except Exception as e:
+        print(f"Warning: Error getting price for {ticker}: {str(e)}")
+        return Decimal("0")
+
+
+async def fetch_security_prices(securities: List[Dict[str, Any]]) -> Dict[str, Decimal]:
+    """Fetch security prices in parallel using ThreadPoolExecutor"""
+    prices = {}
+
+    def fetch_price(ticker: str) -> Tuple[str, Decimal]:
+        return ticker, get_latest_price(ticker)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(fetch_price, sec["ticker"]) for sec in securities]
+
+        for future in futures:
+            ticker, price = future.result()
+            prices[ticker] = price
+
+    return prices
+
+
 def convert_to_base_currency(amount, currency, date_str, base_currency="USD"):
     """Convert amount to base currency (USD or EUR)"""
     if amount is None:
@@ -66,7 +100,7 @@ def convert_to_base_currency(amount, currency, date_str, base_currency="USD"):
         raise ValueError(f"Unsupported base_currency: {base_currency}")
 
 
-def calculate_portfolio(
+async def calculate_portfolio(
     base_currency="USD",
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
@@ -77,26 +111,31 @@ def calculate_portfolio(
         - Summary dictionary with total values
         - List of dictionaries containing individual holding details
     """
-    # === Load XML ===
     tree = ET.parse("portfolio.xml")
     root = tree.getroot()
 
-    # === Parse Securities ===
+    securities = []
     security_map = {}
     for sec in root.find("securities").findall("security"):
         uuid = sec.findtext("uuid")
         ticker = sec.findtext("tickerSymbol")
         name = sec.findtext("name")
         currency = sec.findtext("currencyCode")
-        price = Decimal(str(yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]))
-        security_map[uuid] = {
-            "name": name,
-            "ticker": ticker,
-            "currency": currency,
-            "latest_price": price,
+
+        securities.append(
+            {"uuid": uuid, "ticker": ticker, "name": name, "currency": currency}
+        )
+
+    prices = await fetch_security_prices(securities)
+
+    for sec in securities:
+        security_map[sec["uuid"]] = {
+            "name": sec["name"],
+            "ticker": sec["ticker"],
+            "currency": sec["currency"],
+            "latest_price": prices[sec["ticker"]],
         }
 
-    # === Process Holdings ===
     holdings = defaultdict(
         lambda: {
             "name": None,
@@ -109,7 +148,6 @@ def calculate_portfolio(
         }
     )
 
-    # Process portfolio transactions
     for acct in root.find("accounts").findall("account"):
         for portfolio in acct.findall(".//portfolio"):
             account_name = portfolio.findtext("name")
@@ -163,7 +201,6 @@ def calculate_portfolio(
                     h["total_cost"] -= amount_base
                 h["fees"] += fees
 
-    # Process account transactions
     for acct in root.find("accounts").findall("account"):
         name = acct.findtext("name")
         currency = acct.findtext("currencyCode")
@@ -207,7 +244,6 @@ def calculate_portfolio(
                 h["total_cost"] -= amount_base
                 h["total_shares"] -= amount_base
 
-    # Calculate individual holdings details
     holdings_list = []
     total_value = Decimal("0")
     total_cost = Decimal("0")
@@ -254,7 +290,6 @@ def calculate_portfolio(
         total_value += value
         total_cost += h["total_cost"]
 
-    # Calculate summary
     total_profit_loss = total_value - total_cost
     profit_loss_percentage = (
         (total_profit_loss / total_cost * 100) if total_cost > 0 else Decimal("0")
@@ -262,20 +297,19 @@ def calculate_portfolio(
 
     summary = {
         "base_currency": base_currency,
-        "total_portfolio_value": float(total_value),
-        "total_cost_basis": float(total_cost),
-        "total_profit_loss": float(total_profit_loss),
-        "profit_loss_percentage": float(profit_loss_percentage),
+        "total_portfolio_value": round(float(total_value), 2),
+        "total_cost_basis": round(float(total_cost), 2),
+        "total_profit_loss": round(float(total_profit_loss), 2),
+        "profit_loss_percentage": round(float(profit_loss_percentage), 2),
     }
 
-    return summary, holdings_list
+    return summary
 
 
-def display_portfolio(base_currency="USD"):
+async def display_portfolio(base_currency="USD"):
     """Display portfolio information in a formatted table"""
-    summary, holdings = calculate_portfolio(base_currency)
+    summary, holdings = await calculate_portfolio(base_currency)
 
-    # Print holdings table
     print(
         f"{'Account':<20} {'Ticker':<12} {'Shares':>12} {'Avg Buy (' + base_currency + ')':>12} {'Last Price (' + base_currency + ')':>12} {'Value (' + base_currency + ')':>14} {'P/L (' + base_currency + ')':>12} {'P/L %':>8}"
     )
@@ -286,7 +320,6 @@ def display_portfolio(base_currency="USD"):
             f"{h['name']:<20} {h['ticker']:<12} {h['shares']:>12.4f} {h['average_price']:>12.2f} {h['latest_price']:>12.2f} {h['value']:>14.2f} {h['profit_loss']:>12.2f} {h['profit_loss_percentage']:>8.2f}%"
         )
 
-    # Print summary
     print("\n" + "=" * 90)
     print(
         f"{'Total Portfolio Value (' + base_currency + ')':<40} {summary['total_portfolio_value']:>14.2f}"
@@ -300,9 +333,9 @@ def display_portfolio(base_currency="USD"):
     print(f"{'Profit/Loss Percentage':<40} {summary['profit_loss_percentage']:>14.2f}%")
 
 
-def main(base_currency="USD"):
+async def main(base_currency="USD"):
     """Main function that displays the portfolio"""
-    display_portfolio(base_currency)
+    await display_portfolio(base_currency)
 
 
 if __name__ == "__main__":
@@ -312,4 +345,4 @@ if __name__ == "__main__":
     if base_currency not in ["USD", "EUR"]:
         print("Error: Base currency must be either USD or EUR")
         sys.exit(1)
-    main(base_currency)
+    asyncio.run(main(base_currency))
