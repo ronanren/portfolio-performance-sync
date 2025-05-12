@@ -303,7 +303,7 @@ async def calculate_portfolio(
         "profit_loss_percentage": round(float(profit_loss_percentage), 2),
     }
 
-    return summary
+    return summary, holdings_list
 
 
 async def display_portfolio(base_currency="USD"):

@@ -41,7 +41,7 @@ async def get_portfolio_value(base_currency: str = "USD") -> Dict[str, Dict[str,
         )
 
     try:
-        summary = await calculate_portfolio(base_currency)
+        summary, holdings = await calculate_portfolio(base_currency)
         return {"summary": summary}
     except Exception as e:
         raise HTTPException(
