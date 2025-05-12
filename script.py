@@ -1,9 +1,10 @@
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from decimal import Decimal, getcontext
+from decimal import Decimal
 import yfinance as yf
 from datetime import datetime
 import pandas as pd
+from typing import Dict, List, Any, Tuple
 
 
 def get_historical_eur_usd_rate(date_str):
@@ -60,12 +61,22 @@ def convert_to_base_currency(amount, currency, date_str, base_currency="USD"):
             rate = get_historical_eur_usd_rate(date_str)
             return amount / rate
         else:
-            raise ValueError(f"Unsupported currency: {currency}")
+            raise ValueError(f"Unsupported base_currency: {base_currency}")
     else:
-        raise ValueError(f"Unsupported base currency: {base_currency}")
+        raise ValueError(f"Unsupported base_currency: {base_currency}")
 
 
-def main(base_currency="USD"):
+def calculate_portfolio(
+    base_currency="USD",
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Calculate portfolio values and return structured data
+
+    Returns:
+        Tuple containing:
+        - Summary dictionary with total values
+        - List of dictionaries containing individual holding details
+    """
     # === Load XML ===
     tree = ET.parse("portfolio.xml")
     root = tree.getroot()
@@ -85,7 +96,7 @@ def main(base_currency="USD"):
             "latest_price": price,
         }
 
-    # === Process Holdings from Accounts and Portfolios ===
+    # === Process Holdings ===
     holdings = defaultdict(
         lambda: {
             "name": None,
@@ -94,11 +105,11 @@ def main(base_currency="USD"):
             "total_shares": Decimal("0"),
             "total_cost": Decimal("0"),
             "fees": Decimal("0"),
-            "is_account": False,  # Flag to identify account transactions
+            "is_account": False,
         }
     )
 
-    # Find all portfolio transactions
+    # Process portfolio transactions
     for acct in root.find("accounts").findall("account"):
         for portfolio in acct.findall(".//portfolio"):
             account_name = portfolio.findtext("name")
@@ -152,14 +163,13 @@ def main(base_currency="USD"):
                     h["total_cost"] -= amount_base
                 h["fees"] += fees
 
-    # Find all account transactions
+    # Process account transactions
     for acct in root.find("accounts").findall("account"):
         name = acct.findtext("name")
         currency = acct.findtext("currencyCode")
         if currency is None:
             continue
 
-        # Skip USD and EUR accounts
         if name in ["USD", "EUR"]:
             continue
 
@@ -197,34 +207,15 @@ def main(base_currency="USD"):
                 h["total_cost"] -= amount_base
                 h["total_shares"] -= amount_base
 
-    # === Compute Summary ===
-    print(
-        f"{'Account':<20} {'Ticker':<12} {'Shares':>12} {'Avg Buy (' + base_currency + ')':>12} {'Last Price (' + base_currency + ')':>12} {'Value (' + base_currency + ')':>14} {'P/L (' + base_currency + ')':>12} {'P/L %':>8}"
-    )
-    print("-" * 120)
+    # Calculate individual holdings details
+    holdings_list = []
+    total_value = Decimal("0")
+    total_cost = Decimal("0")
 
-    # Sort by value in descending order
-    sorted_holdings = sorted(
-        holdings.items(),
-        key=lambda x: (
-            -x[1]["total_shares"]
-            * (
-                Decimal("1.0")
-                if x[1]["is_account"]
-                else convert_to_base_currency(
-                    security_map[x[0]]["latest_price"],
-                    security_map[x[0]]["currency"],
-                    "",
-                    base_currency,
-                )
-            ),
-        ),
-    )
-
-    for uuid, h in sorted_holdings:
+    for uuid, h in holdings.items():
         if h["total_shares"] <= 0:
             continue
-        avg_price = h["total_cost"] / h["total_shares"]
+
         latest_price_base = (
             Decimal("1.0")
             if h["is_account"]
@@ -235,48 +226,83 @@ def main(base_currency="USD"):
                 base_currency,
             )
         )
+
         value = h["total_shares"] * latest_price_base
+        avg_price = h["total_cost"] / h["total_shares"]
         profit_loss = value - h["total_cost"]
         profit_loss_pct = (
             (profit_loss / h["total_cost"] * 100)
             if h["total_cost"] > 0
             else Decimal("0")
         )
-        print(
-            f"{h['name']:<20} {h['ticker']:<12} {h['total_shares']:>12.4f} {avg_price:>12.2f} {latest_price_base:>12.2f} {value:>14.2f} {profit_loss:>12.2f} {profit_loss_pct:>8.2f}%"
+
+        holdings_list.append(
+            {
+                "name": h["name"],
+                "ticker": h["ticker"],
+                "shares": float(h["total_shares"]),
+                "average_price": float(avg_price),
+                "latest_price": float(latest_price_base),
+                "value": float(value),
+                "profit_loss": float(profit_loss),
+                "profit_loss_percentage": float(profit_loss_pct),
+                "account": h.get("account", ""),
+                "is_account": h["is_account"],
+            }
         )
 
-    # Calculate total portfolio value and profit/loss
-    total_value = Decimal("0")
-    total_cost = Decimal("0")
-    for uuid, h in holdings.items():
-        if h["total_shares"] <= 0:
-            continue
-        latest_price_base = (
-            Decimal("1.0")
-            if h["is_account"]
-            else convert_to_base_currency(
-                security_map[uuid]["latest_price"],
-                security_map[uuid]["currency"],
-                "",
-                base_currency,
-            )
-        )
-        total_value += h["total_shares"] * latest_price_base
+        total_value += value
         total_cost += h["total_cost"]
 
+    # Calculate summary
     total_profit_loss = total_value - total_cost
     profit_loss_percentage = (
         (total_profit_loss / total_cost * 100) if total_cost > 0 else Decimal("0")
     )
 
-    print("\n" + "=" * 90)
-    print(f"{'Total Portfolio Value (' + base_currency + ')':<40} {total_value:>14.2f}")
-    print(f"{'Total Cost Basis (' + base_currency + ')':<40} {total_cost:>14.2f}")
+    summary = {
+        "base_currency": base_currency,
+        "total_portfolio_value": float(total_value),
+        "total_cost_basis": float(total_cost),
+        "total_profit_loss": float(total_profit_loss),
+        "profit_loss_percentage": float(profit_loss_percentage),
+    }
+
+    return summary, holdings_list
+
+
+def display_portfolio(base_currency="USD"):
+    """Display portfolio information in a formatted table"""
+    summary, holdings = calculate_portfolio(base_currency)
+
+    # Print holdings table
     print(
-        f"{'Total Profit/Loss (' + base_currency + ')':<40} {total_profit_loss:>14.2f}"
+        f"{'Account':<20} {'Ticker':<12} {'Shares':>12} {'Avg Buy (' + base_currency + ')':>12} {'Last Price (' + base_currency + ')':>12} {'Value (' + base_currency + ')':>14} {'P/L (' + base_currency + ')':>12} {'P/L %':>8}"
     )
-    print(f"{'Profit/Loss Percentage':<40} {profit_loss_percentage:>14.2f}%")
+    print("-" * 120)
+
+    for h in holdings:
+        print(
+            f"{h['name']:<20} {h['ticker']:<12} {h['shares']:>12.4f} {h['average_price']:>12.2f} {h['latest_price']:>12.2f} {h['value']:>14.2f} {h['profit_loss']:>12.2f} {h['profit_loss_percentage']:>8.2f}%"
+        )
+
+    # Print summary
+    print("\n" + "=" * 90)
+    print(
+        f"{'Total Portfolio Value (' + base_currency + ')':<40} {summary['total_portfolio_value']:>14.2f}"
+    )
+    print(
+        f"{'Total Cost Basis (' + base_currency + ')':<40} {summary['total_cost_basis']:>14.2f}"
+    )
+    print(
+        f"{'Total Profit/Loss (' + base_currency + ')':<40} {summary['total_profit_loss']:>14.2f}"
+    )
+    print(f"{'Profit/Loss Percentage':<40} {summary['profit_loss_percentage']:>14.2f}%")
+
+
+def main(base_currency="USD"):
+    """Main function that displays the portfolio"""
+    display_portfolio(base_currency)
 
 
 if __name__ == "__main__":
