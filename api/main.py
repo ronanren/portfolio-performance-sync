@@ -12,7 +12,7 @@ import requests
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from script import calculate_portfolio
-from .security import get_api_key, URL_RENDER
+from .security import get_api_key
 
 
 # Cache structure

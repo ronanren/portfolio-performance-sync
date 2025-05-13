@@ -43,7 +43,6 @@ python3 run_api.py
      - `PORT`: 80
      - `X_API_KEY`: Your API key
      - `API_KEY_NAME`: X-API-Key
-     - `URL_RENDER`: Your Render URL
 
 6. Deploy!
 
