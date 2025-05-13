@@ -22,12 +22,13 @@ portfolio_cache = {
 }
 
 
-async def update_portfolio_cache():
+async def update_portfolio_cache(health=True):
     """Update the portfolio cache for both currencies"""
     try:
         # call health check to stay Render active
-        r = requests.get(URL_RENDER + "/api/health")
-        print(r.status_code)
+        if health:
+            r = requests.get(URL_RENDER + "/api/health")
+            print(r.status_code)
 
         # Update USD cache
         summary_usd, _ = await calculate_portfolio("USD")
@@ -46,7 +47,7 @@ async def update_portfolio_cache():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await update_portfolio_cache()
+    await update_portfolio_cache(health=False)
     aiocron.crontab("*/5 * * * *", func=update_portfolio_cache)
     yield
     pass
