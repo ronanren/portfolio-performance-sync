@@ -2,6 +2,30 @@
 
 Track your portfolio performance account and get real-time data via api and widgets.
 
+## Project
+
+This project provides a real-time API to track and monitor your investment portfolio performance. It integrates with Portfolio Performance, a popular open-source portfolio tracking software, and enhances it with live market data.
+
+Key features:
+
+- Real-time portfolio value tracking with automatic currency conversion (USD/EUR)
+- Live market data updates every 5 minutes via Yahoo Finance
+- Secure API access with API key authentication
+- Simple JSON responses for easy integration with other tools
+- Health check endpoint for monitoring API status
+
+The API is built with FastAPI for high performance and easy deployment. It reads your Portfolio Performance XML export file and enriches it with current market prices to provide up-to-date portfolio valuations.
+
+### Widget Integration
+
+You can display your portfolio value directly on your iOS device using HTTPWidget:
+
+1. Install [HTTPWidget](https://apps.apple.com/th/app/httpwidget/id6447097633) from the App Store
+2. Configure a new widget with your API endpoint
+3. Add your API key in the headers
+4. Select the JSON path to display (e.g., `summary.total_portfolio_value`)
+5. Add the widget to your home screen for real-time portfolio monitoring
+
 ## Development
 
 Add your `portfolio.xml` file to the root of the project.
@@ -22,13 +46,6 @@ curl -X GET "http://localhost/api/portfolio?base_currency=USD" -H "X-API-Key: ke
 
 ## Deploy
 
-### Local Development
-
-```bash
-# Run the API locally
-python3 run_api.py
-```
-
 ### Deploy to Render
 
 1. Create a free account on [Render](https://render.com)
@@ -46,20 +63,37 @@ python3 run_api.py
 
 6. Deploy!
 
-Your API will be available at `https://your-app-name.onrender.com`
+Your API will be available at https://your-app-name.onrender.com
 
-You can use https://console.cron-job.org/jobs to schedule a job to run every 10 minutes to keep your API alive and avoid sleep.
+You can use [fastcron.com](https://fastcron.com) to schedule a job to run every 10 minutes to keep your API alive and avoid sleep on the Health Check.
 
 ## API
 
-### Get Portfolio
+### Get Portfolio (USD or EUR)
 
 ```bash
 curl -X GET "http://localhost/api/portfolio?base_currency=USD" -H "X-API-Key: key"
+
+# Example response
+{
+  "summary": {
+    "base_currency": "USD",
+    "total_portfolio_value": 1000.00,
+    "total_cost_basis": 900.00,
+    "total_profit_loss": 100.00,
+    "profit_loss_percentage": 10.00
+  },
+  "last_updated": "2025-05-13T10:10:09.467928"
+}
 ```
 
 ### Health Check
 
 ```bash
 curl -X GET "http://localhost/api/health"
+
+# Example response
+{
+	"status": "ok"
+}
 ```
