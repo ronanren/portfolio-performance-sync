@@ -6,7 +6,7 @@ Track your portfolio performance account and get real-time data via api and widg
 
 ## Project
 
-This project offers a real-time API to monitor your investment portfolio using data from Portfolio Performance and live market prices.
+This project offers a real-time API to monitor your investment portfolio using data from [Portfolio Performance](https://www.portfolio-performance.info/) and live market prices.
 
 Highlights:
 
