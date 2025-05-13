@@ -8,6 +8,7 @@ load_dotenv()
 
 API_KEY_NAME = os.getenv("API_KEY_NAME", "X-API-Key")
 API_KEY = os.getenv("API_KEY")
+URL_RENDER = os.getenv("URL_RENDER")
 
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 

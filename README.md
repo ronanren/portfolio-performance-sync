@@ -17,7 +17,7 @@ python3 script.py USD
 python3 run_api.py
 
 # Get your portfolio
-curl -X GET "http://localhost:8000/api/portfolio?base_currency=USD" -H "X-API-Key: key"
+curl -X GET "http://localhost/api/portfolio?base_currency=USD" -H "X-API-Key: key"
 ```
 
 ## Deploy
