@@ -2,19 +2,21 @@
 
 Track your portfolio performance account and get real-time data via api and widgets.
 
+<img src="./widget.jpg" alt="Portfolio Performance Sync" width="300" />
+
 ## Project
 
-This project provides a real-time API to track and monitor your investment portfolio performance. It integrates with Portfolio Performance, a popular open-source portfolio tracking software, and enhances it with live market data.
+This project offers a real-time API to monitor your investment portfolio using data from Portfolio Performance and live market prices.
 
-Key features:
+Highlights:
 
-- Real-time portfolio value tracking with automatic currency conversion (USD/EUR)
-- Live market data updates every 5 minutes via Yahoo Finance
-- Secure API access with API key authentication
-- Simple JSON responses for easy integration with other tools
-- Health check endpoint for monitoring API status
+- Real-time portfolio valuation with automatic USD/EUR conversion
+- Market data refreshed every 5 minutes via Yahoo Finance
+- Secure API access using API keys
+- JSON responses for easy integration
+- Health check endpoint for API monitoring
 
-The API is built with FastAPI for high performance and easy deployment. It reads your Portfolio Performance XML export file and enriches it with current market prices to provide up-to-date portfolio valuations.
+Built with FastAPI, it processes your Portfolio Performance XML export and enriches it with current market data for accurate, up-to-date tracking.
 
 ### Widget Integration
 
@@ -94,6 +96,6 @@ curl -X GET "http://localhost/api/health"
 
 # Example response
 {
-	"status": "ok"
+  "status": "ok"
 }
 ```
