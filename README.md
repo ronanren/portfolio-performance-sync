@@ -49,6 +49,8 @@ python3 run_api.py
 
 Your API will be available at `https://your-app-name.onrender.com`
 
+You can use https://console.cron-job.org/jobs to schedule a job to run every 10 minutes to keep your API alive and avoid sleep.
+
 ## API
 
 ### Get Portfolio
