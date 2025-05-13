@@ -4,6 +4,8 @@ Track your Portfolio Performance account and receive daily notifications with ke
 
 ## Development
 
+Add your `portfolio.xml` file to the root of the project.
+
 ```bash
 pip3 install -r requirements.txt
 ```
