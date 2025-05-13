@@ -33,7 +33,7 @@ python3 run_api.py
 
 1. Create a free account on [Render](https://render.com)
 2. Create a new Web Service
-3. Upload your `portfolio.xml` file to the repo Github (private for privacy)
+3. Upload your `portfolio.xml` file to the repo Github (private repo for privacy)
 4. Connect your GitHub repository
 5. Configure the service:
 
