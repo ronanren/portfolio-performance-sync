@@ -159,10 +159,14 @@ async def calculate_portfolio(
                 security_ref_text = security_ref.attrib.get("reference", "")
 
                 try:
-                    security_index = (
-                        int(security_ref_text.split("/")[-1].split("[")[-1].rstrip("]"))
-                        - 1
-                    )
+                    if "[" in security_ref_text:
+                        security_index = (
+                            int(security_ref_text.split("/")[-1].split("[")[-1].rstrip("]"))
+                            - 1
+                        )
+                    else:
+                        security_index = 0
+                    
                     if security_index < 0 or security_index >= len(security_map):
                         continue
                 except (ValueError, IndexError):
