@@ -11,36 +11,45 @@ from concurrent.futures import ThreadPoolExecutor
 
 def get_historical_eur_usd_rate(date_str):
     """Get EUR/USD exchange rate for a specific date"""
-    if not date_str:
-        eur_usd = yf.Ticker("EURUSD=X")
-        return Decimal(str(eur_usd.history(period="1d")["Close"].iloc[-1]))
-
-    date = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d")
-    eur_usd = yf.Ticker("EURUSD=X")
-
     try:
-        historical_data = eur_usd.history(start=date, end=date + pd.Timedelta(days=1))
-        if not historical_data.empty:
-            return Decimal(str(historical_data["Close"].iloc[0]))
-    except:
-        pass
+        if not date_str:
+            eur_usd = yf.Ticker("EURUSD=X")
+            history = eur_usd.history(period="1d")
+            if not history.empty:
+                return Decimal(str(history["Close"].iloc[-1]))
+            return Decimal("1.05")
 
-    for days_back in range(1, 6):
+        date = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d")
+        eur_usd = yf.Ticker("EURUSD=X")
+
         try:
-            lookback_date = date - pd.Timedelta(days=days_back)
-            historical_data = eur_usd.history(
-                start=lookback_date, end=lookback_date + pd.Timedelta(days=1)
-            )
+            historical_data = eur_usd.history(start=date, end=date + pd.Timedelta(days=1))
             if not historical_data.empty:
                 return Decimal(str(historical_data["Close"].iloc[0]))
         except:
-            continue
-    try:
-        historical_data = eur_usd.history(period="1d")
-        if not historical_data.empty:
-            return Decimal(str(historical_data["Close"].iloc[-1]))
-    except:
-        return Decimal("1.0")
+            pass
+
+        for days_back in range(1, 6):
+            try:
+                lookback_date = date - pd.Timedelta(days=days_back)
+                historical_data = eur_usd.history(
+                    start=lookback_date, end=lookback_date + pd.Timedelta(days=1)
+                )
+                if not historical_data.empty:
+                    return Decimal(str(historical_data["Close"].iloc[0]))
+            except:
+                continue
+        
+        try:
+            historical_data = eur_usd.history(period="1d")
+            if not historical_data.empty:
+                return Decimal(str(historical_data["Close"].iloc[-1]))
+        except:
+            pass
+        
+        return Decimal("1.05")
+    except Exception:
+        return Decimal("1.05")
 
 
 def get_latest_price(ticker: str) -> Decimal:
@@ -141,6 +150,7 @@ async def calculate_portfolio(
             "name": None,
             "ticker": None,
             "currency": None,
+            "original_currency": None,
             "total_shares": Decimal("0"),
             "total_cost": Decimal("0"),
             "fees": Decimal("0"),
@@ -238,6 +248,7 @@ async def calculate_portfolio(
         h["name"] = name
         h["ticker"] = "CASH"
         h["currency"] = base_currency
+        h["original_currency"] = currency
         h["is_account"] = True
 
         for txn in acct.findall(".//account-transaction"):
@@ -248,25 +259,37 @@ async def calculate_portfolio(
             date = txn.findtext("date")
 
             amount = Decimal(txn.findtext("amount", default="0")) / Decimal("1e2")
-            amount_base = convert_to_base_currency(
-                amount, txn_currency, date, base_currency
-            )
-
+            
             if type_ == "DEPOSIT":
+                h["total_shares"] += amount
+                amount_base = convert_to_base_currency(
+                    amount, txn_currency, date, base_currency
+                )
                 h["total_cost"] += amount_base
-                h["total_shares"] += amount_base
             elif type_ == "REMOVAL":
+                h["total_shares"] -= amount
+                amount_base = convert_to_base_currency(
+                    amount, txn_currency, date, base_currency
+                )
                 h["total_cost"] -= amount_base
-                h["total_shares"] -= amount_base
             elif type_ == "DIVIDEND":
+                h["total_shares"] += amount
+                amount_base = convert_to_base_currency(
+                    amount, txn_currency, date, base_currency
+                )
                 h["total_cost"] += amount_base
-                h["total_shares"] += amount_base
             elif type_ == "INTEREST":
+                h["total_shares"] += amount
+                amount_base = convert_to_base_currency(
+                    amount, txn_currency, date, base_currency
+                )
                 h["total_cost"] += amount_base
-                h["total_shares"] += amount_base
             elif type_ == "FEE":
+                h["total_shares"] -= amount
+                amount_base = convert_to_base_currency(
+                    amount, txn_currency, date, base_currency
+                )
                 h["total_cost"] -= amount_base
-                h["total_shares"] -= amount_base
 
     holdings_list = []
     total_value = Decimal("0")
@@ -276,18 +299,25 @@ async def calculate_portfolio(
         if h["total_shares"] <= 0:
             continue
 
-        latest_price_base = (
-            Decimal("1.0")
-            if h["is_account"]
-            else convert_to_base_currency(
+        if h["is_account"]:
+            latest_price_base = Decimal("1.0")
+            if h["original_currency"] != base_currency:
+                value = convert_to_base_currency(
+                    h["total_shares"],
+                    h["original_currency"],
+                    "",
+                    base_currency,
+                )
+            else:
+                value = h["total_shares"]
+        else:
+            latest_price_base = convert_to_base_currency(
                 security_map[uuid]["latest_price"],
                 security_map[uuid]["currency"],
                 "",
                 base_currency,
             )
-        )
-
-        value = h["total_shares"] * latest_price_base
+            value = h["total_shares"] * latest_price_base
         avg_price = h["total_cost"] / h["total_shares"]
         profit_loss = value - h["total_cost"]
         profit_loss_pct = (
