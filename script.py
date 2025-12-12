@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-from collections import defaultdict
+from collections import defaultdict, deque
 from decimal import Decimal
 import yfinance as yf
 from datetime import datetime
@@ -145,6 +145,7 @@ async def calculate_portfolio(
             "total_cost": Decimal("0"),
             "fees": Decimal("0"),
             "is_account": False,
+            "lots": deque(),
         }
     )
 
@@ -198,12 +199,31 @@ async def calculate_portfolio(
                 h["is_account"] = False
 
                 if type_ == "BUY":
+                    total_cost_with_fees = amount_base + fees
+                    cost_per_share = total_cost_with_fees / shares if shares > 0 else Decimal("0")
+                    h["lots"].append((shares, cost_per_share))
                     h["total_shares"] += shares
-                    h["total_cost"] += amount_base + fees
+                    h["total_cost"] += total_cost_with_fees
+                    h["fees"] += fees
                 elif type_ == "SELL":
+                    shares_to_sell = shares
+                    cost_of_sold = Decimal("0")
+                    
+                    while shares_to_sell > 0 and h["lots"]:
+                        lot_shares, lot_cost_per_share = h["lots"][0]
+                        
+                        if lot_shares <= shares_to_sell:
+                            cost_of_sold += lot_shares * lot_cost_per_share
+                            shares_to_sell -= lot_shares
+                            h["lots"].popleft()
+                        else:
+                            cost_of_sold += shares_to_sell * lot_cost_per_share
+                            h["lots"][0] = (lot_shares - shares_to_sell, lot_cost_per_share)
+                            shares_to_sell = Decimal("0")
+                    
                     h["total_shares"] -= shares
-                    h["total_cost"] -= amount_base
-                h["fees"] += fees
+                    h["total_cost"] -= cost_of_sold
+                    h["fees"] += fees
 
     for acct in root.find("accounts").findall("account"):
         name = acct.findtext("name")
