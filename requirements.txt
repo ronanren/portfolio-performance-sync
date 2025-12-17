@@ -10,5 +10,4 @@ aiohttp==3.9.3
 typing-extensions>=4.12.0
 pydantic==2.11.4
 setuptools>=65.5.1
-wheel>=0.40.0
-aiocron==1.8 
+wheel>=0.40.0 

@@ -1,13 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Any, List
+from typing import Dict, Any
 import sys
 import os
 import time
 from datetime import datetime
-import aiocron
+import asyncio
 from contextlib import asynccontextmanager
-import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -21,31 +20,65 @@ portfolio_cache = {
     "EUR": {"data": None, "timestamp": 0},
 }
 
+# Lock to prevent concurrent cache updates
+cache_update_lock = asyncio.Lock()
+
+# Background task reference
+background_task = None
+
 
 async def update_portfolio_cache():
-    """Update the portfolio cache for both currencies"""
-    try:
-        # Update USD cache
-        summary_usd, _ = await calculate_portfolio("USD")
-        portfolio_cache["USD"]["data"] = summary_usd
-        portfolio_cache["USD"]["timestamp"] = time.time()
+    """Update the portfolio cache for both currencies in the background"""
+    if cache_update_lock.locked():
+        print(f"Cache update already in progress, skipping...")
+        return
+    
+    async with cache_update_lock:
+        try:
+            print(f"Starting cache update at {datetime.now().isoformat()}")
+            
+            summary_usd, _ = await calculate_portfolio("USD")
+            portfolio_cache["USD"]["data"] = summary_usd
+            portfolio_cache["USD"]["timestamp"] = time.time()
 
-        # Update EUR cache
-        summary_eur, _ = await calculate_portfolio("EUR")
-        portfolio_cache["EUR"]["data"] = summary_eur
-        portfolio_cache["EUR"]["timestamp"] = time.time()
+            summary_eur, _ = await calculate_portfolio("EUR")
+            portfolio_cache["EUR"]["data"] = summary_eur
+            portfolio_cache["EUR"]["timestamp"] = time.time()
 
-        print(f"Cache updated at {datetime.now().isoformat()}")
-    except Exception as e:
-        print(f"Error updating cache: {str(e)}")
+            print(f"Cache updated successfully at {datetime.now().isoformat()}")
+        except Exception as e:
+            print(f"Error updating cache: {str(e)}")
+
+
+async def cache_update_loop():
+    """Background loop that updates the cache every 5 minutes"""
+    while True:
+        try:
+            await asyncio.sleep(300)
+            asyncio.create_task(update_portfolio_cache())
+        except Exception as e:
+            print(f"Error in cache update loop: {str(e)}")
+            await asyncio.sleep(60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global background_task
+    
+    print("Initializing cache...")
     await update_portfolio_cache()
-    aiocron.crontab("*/5 * * * *", func=update_portfolio_cache)
+    
+    background_task = asyncio.create_task(cache_update_loop())
+    print("Background cache update loop started")
+    
     yield
-    pass
+    
+    if background_task:
+        background_task.cancel()
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
