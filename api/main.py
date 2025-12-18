@@ -14,17 +14,23 @@ from script import calculate_portfolio
 from .security import get_api_key
 
 
-# Cache structure
 portfolio_cache = {
     "USD": {"data": None, "timestamp": 0},
     "EUR": {"data": None, "timestamp": 0},
 }
 
-# Lock to prevent concurrent cache updates
 cache_update_lock = asyncio.Lock()
-
-# Background task reference
 background_task = None
+
+
+def calculate_portfolio_sync(currency: str):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(calculate_portfolio(currency))
+        return result
+    finally:
+        loop.close()
 
 
 async def update_portfolio_cache():
@@ -37,11 +43,11 @@ async def update_portfolio_cache():
         try:
             print(f"Starting cache update at {datetime.now().isoformat()}")
             
-            summary_usd, _ = await calculate_portfolio("USD")
+            summary_usd, _ = await asyncio.to_thread(calculate_portfolio_sync, "USD")
             portfolio_cache["USD"]["data"] = summary_usd
             portfolio_cache["USD"]["timestamp"] = time.time()
 
-            summary_eur, _ = await calculate_portfolio("EUR")
+            summary_eur, _ = await asyncio.to_thread(calculate_portfolio_sync, "EUR")
             portfolio_cache["EUR"]["data"] = summary_eur
             portfolio_cache["EUR"]["timestamp"] = time.time()
 
